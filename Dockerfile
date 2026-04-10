@@ -20,5 +20,6 @@ RUN uv sync --frozen
 # 7. Copiamos todo el resto de tu código
 COPY . .
 
-# 8. Por ahora, el comando por defecto ejecutará tus pruebas
-CMD ["uv", "run", "pytest"]
+# 8. Comando para iniciar el servidor de FastAPI
+# Usamos --host 0.0.0.0 para que Docker permita conexiones externas (desde tu Windows)
+CMD ["uv", "run", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

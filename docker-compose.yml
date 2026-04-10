@@ -1,14 +1,27 @@
 services:
   app:
-    build: . # Busca el Dockerfile en la carpeta actual
+    build: .
+    container_name: pdfextractext-app-1
     ports:
-      - "8000:8000" # Conecta el puerto 8000 de tu Windows al del contenedor
+      - "8000:8000"
     volumes:
-      - .:/app # Sincroniza tu código: si editas algo en Windows, se actualiza en Docker
+      - .:/app
+    environment:
+      # Esto le dice a tu código de Python que la DB está en el host 'db'
+      - MONGO_URL=mongodb://db:27017
     depends_on:
-      - db # No arranca la app hasta que la base de datos esté lista
+      - db
 
   db:
-    image: mongo:latest # Descarga la imagen oficial de MongoDB
+    image: mongo:latest
+    container_name: pdfextractext-db-1
+    # Este comando reduce drásticamente los logs innecesarios
+    command: ["mongod", "--quiet"]
     ports:
       - "27017:27017"
+    volumes:
+      # Esto evita que tus datos se borren al apagar el contenedor
+      - mongodb_data:/data/db
+
+volumes:
+  mongodb_data:

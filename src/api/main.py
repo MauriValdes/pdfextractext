@@ -43,3 +43,7 @@ async def upload_pdf(file: UploadFile = File(...)):
             status_code=422, 
             detail=f"No se pudo procesar el contenido del PDF: {str(e)} ⚠️"
         )
+    
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
