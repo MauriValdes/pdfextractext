@@ -1,49 +1,53 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from src.services.pdf_processor import is_pdf, get_file_hash, extract_text
+# 📥 Importamos la tarea Y el diccionario temporal
+from src.services.ai_service import process_summary_task, results_db
+import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="PDF ExtraText AI")
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
-    # 1. Validación rápida: ¿Es un PDF por su nombre? 📛
+async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     if not is_pdf(file.filename):
-        raise HTTPException(
-            status_code=400, 
-            detail="El archivo no es un PDF válido ❌"
-        )
+        raise HTTPException(status_code=400, detail="El archivo no es un PDF válido ❌")
     
-    # 2. Leemos los bytes del archivo 📖
-    # Usamos await porque la lectura es una operación asíncrona en FastAPI
     content = await file.read()
-    
-    # 3. Generamos la huella digital (Hash SHA-256) 🧬
-    # Esto le servirá a tu compañero para la base de datos
     file_hash = get_file_hash(content)
     
-    # 4. Intentamos extraer el texto 🛠️
     try:
         texto_final = extract_text(content)
         
-        # 5. Respuesta final de éxito ✅
-        # Aquí agrupamos toda la información útil
+        # 🚀 Disparamos la tarea diferida
+        background_tasks.add_task(process_summary_task, texto_final, file_hash)
+        
         return {
-            "status": "success",
-            "message": "Archivo procesado correctamente",
+            "status": "processing",
+            "message": "Archivo recibido. Usá el hash para consultar el estado.",
             "data": {
                 "filename": file.filename,
-                "hash": file_hash,
-                "text": texto_final
+                "hash": file_hash
             }
         }
-        
     except Exception as e:
-        # Si algo falla en la extracción (archivo corrupto, etc.)
-        # Enviamos un error específico como querías
-        raise HTTPException(
-            status_code=422, 
-            detail=f"No se pudo procesar el contenido del PDF: {str(e)} ⚠️"
-        )
+        raise HTTPException(status_code=422, detail=f"Error: {str(e)} ⚠️")
+
+# 🔍 NUEVO: Endpoint para consultar el resultado
+@app.get("/status/{file_hash}")
+async def get_status(file_hash: str):
+    # Buscamos en la memoria temporal
+    resumen = results_db.get(file_hash)
     
+    if resumen is None:
+        raise HTTPException(status_code=404, detail="No se encontró procesamiento para este hash.")
+    
+    if resumen == "PROCESANDO...":
+        return {"status": "pending", "message": "La IA todavía está trabajando... ⏳"}
+    
+    return {
+        "status": "completed",
+        "hash": file_hash,
+        "summary": resumen
+    }
+
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
