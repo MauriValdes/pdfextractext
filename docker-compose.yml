@@ -1,0 +1,14 @@
+services:
+  app:
+    build: . # Busca el Dockerfile en la carpeta actual
+    ports:
+      - "8000:8000" # Conecta el puerto 8000 de tu Windows al del contenedor
+    volumes:
+      - .:/app # Sincroniza tu código: si editas algo en Windows, se actualiza en Docker
+    depends_on:
+      - db # No arranca la app hasta que la base de datos esté lista
+
+  db:
+    image: mongo:latest # Descarga la imagen oficial de MongoDB
+    ports:
+      - "27017:27017"
