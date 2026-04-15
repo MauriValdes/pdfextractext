@@ -1,10 +1,14 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from src.services.pdf_processor import is_pdf, get_file_hash, extract_text
-# 📥 Importamos la tarea Y el diccionario temporal
-from src.services.ai_service import process_summary_task, results_db
+
+from src.services.ai_service import process_summary_task
+from src.repository.pdf_repository import PDFRepository
+from src.models.pdf import ProcessResult, DocumentMetadata
 import uvicorn
 
 app = FastAPI(title="PDF ExtraText AI")
+
+pdf_repo = PDFRepository()
 
 @app.post("/upload")
 async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
@@ -14,15 +18,36 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
     content = await file.read()
     file_hash = get_file_hash(content)
     
+    existing = await pdf_repo.get_by_hash(file_hash)
+    if existing:
+        return {
+            "status": existing.status,
+            "message": "Información recuperada de la base de datos ✅",
+            "data": existing
+        }
+    
     try:
         texto_final = extract_text(content)
         
-        # 🚀 Disparamos la tarea diferida
-        background_tasks.add_task(process_summary_task, texto_final, file_hash)
+        metadata = DocumentMetadata(
+            filename=file.filename,
+            page_count=0, # Esto se puede calcular después con una librería
+            file_size=len(content)
+        )
+        
+        initial_process = ProcessResult(
+            file_hash=file_hash,
+            status="processing",
+            metadata=metadata
+        )
+        
+        await pdf_repo.save(initial_process)
+        
+        background_tasks.add_task(process_summary_task, texto_final, file_hash, pdf_repo)
         
         return {
             "status": "processing",
-            "message": "Archivo recibido. Usá el hash para consultar el estado.",
+            "message": "Archivo recibido y registrado. Procesando con IA... ⏳",
             "data": {
                 "filename": file.filename,
                 "hash": file_hash
@@ -31,22 +56,19 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error: {str(e)} ⚠️")
 
-# 🔍 NUEVO: Endpoint para consultar el resultado
 @app.get("/status/{file_hash}")
 async def get_status(file_hash: str):
-    # Buscamos en la memoria temporal
-    resumen = results_db.get(file_hash)
+
+    resultado = await pdf_repo.get_by_hash(file_hash)
     
-    if resumen is None:
+    if resultado is None:
         raise HTTPException(status_code=404, detail="No se encontró procesamiento para este hash.")
     
-    if resumen == "PROCESANDO...":
-        return {"status": "pending", "message": "La IA todavía está trabajando... ⏳"}
-    
+    # Si está en 'processing', el modelo ya trae ese status por defecto
     return {
-        "status": "completed",
+        "status": resultado.status,
         "hash": file_hash,
-        "summary": resumen
+        "data": resultado
     }
 
 if __name__ == "__main__":

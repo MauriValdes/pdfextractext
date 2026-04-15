@@ -2,7 +2,7 @@
 .venv/
 venv/
 env/
-
+.env
 # Caché de Python
 **/__pycache__/
 *.py[cod]
