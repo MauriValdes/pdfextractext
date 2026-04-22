@@ -10,6 +10,7 @@ dependencies = [
     "motor>=3.6.0",
     "pydantic-settings>=2.5.0",
     "python-multipart>=0.0.26",
+    "pymupdf>=1.27.2.2",
 ]
 
 [dependency-groups]
