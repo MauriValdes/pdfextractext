@@ -15,7 +15,7 @@ Aplicación web desarrollada en Python que permite subir archivos PDF, extraer s
 
 ---
 
-## 🧠 Metodología y buenas prácticas
+## Metodología y buenas prácticas
 
 - ✅ TDD (Test Driven Development)
 - ✅ Principios:
