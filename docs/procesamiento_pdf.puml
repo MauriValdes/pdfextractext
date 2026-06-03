@@ -1,0 +1,46 @@
+@startuml
+title Secuencia: Carga y Procesamiento de PDF (Mapa de Refactorización)
+
+actor Cliente
+boundary DocumentRouter as Router
+control DocumentService as Service
+control DocumentRepository as Repo
+database MongoDB as DB
+
+== Paso 1: Recepción y Validaciones en el Router ==
+Cliente -> Router: POST /upload-pdf (file)
+Router -> Router: Validar file.content_type != "application/pdf"
+alt Si no es PDF
+    Router --> Cliente: HTTP 400 (El archivo debe ser un PDF)
+end
+
+Router -> Router: Validar len(pdf_bytes) > 5MB
+alt Si es demasiado grande
+    Router --> Cliente: HTTP 400 (Máximo 5MB)
+end
+
+== Paso 2: Delegación al Servicio de Negocio ==
+Router -> Service: process_new_document(file.filename, pdf_bytes)
+
+Service -> Service: get_pdf_checksum(pdf_bytes)
+
+== Paso 3: Control de Duplicados en el Repositorio ==
+Service -> Repo: find_by_checksum(checksum)
+Repo -> DB: find_one({"checksum": checksum})
+DB --> Repo: documento o null
+Repo --> Service: documento_existente (Objeto o None)
+
+alt Si el documento_existente NO es None
+    Service --> Router: raise HTTPException(400, "El documento ya existe")
+    Router --> Cliente: HTTP 400 Bad Request
+else Si el documento es nuevo (None)
+    == Paso 4: Procesamiento y Persistencia ==
+    Service -> Service: extract_text_from_pdf(pdf_bytes)
+    Service -> Repo: save_document(new_doc)
+    Repo -> DB: insert_one(new_doc.model_dump())
+    DB --> Repo: éxito (inserted_id)
+    Repo --> Service: confirmación
+    Service --> Router: resultado_proceso
+    Router --> Cliente: HTTP 201 Created (JSON Exitoso)
+end
+@enduml
