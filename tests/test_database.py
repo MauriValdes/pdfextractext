@@ -1,33 +1,38 @@
 import pytest
+from src.config.config import settings
 from src.database.mongodb import db_connection
+from src.repository.document_repository import DocumentRepository
+from src.models.document import DocumentCreate
 
 @pytest.mark.asyncio
 async def test_insert_and_find_document():
-    # 1. Arrange (Preparar) 
-    # Iniciamos la conexión y seleccionamos la colección de resultados procesados
-    await db_connection.connect()
-    collection = db_connection.db.processed_pdfs
+    # 1. Arrange (Preparar)
+    await db_connection.connect(settings.mongo_db_test)
     
-    # Creamos un documento con los campos reales que usará el servicio
-    documento_ejemplo = {
-        "filename": "documento_universidad.pdf",
-        "content": "Texto extraído de prueba para validar la base de datos.",
-        "checksum": "sha256_mock_789xyz"
-    }
+    # Instanciamos el repositorio real pasándole la base de datos
+    repository = DocumentRepository(db_connection.db)
+    
+    # Usamos el modelo real de Pydantic para crear los datos de prueba
+    documento_ejemplo = DocumentCreate(
+        filename="documento_universidad.pdf",
+        content="Texto extraído de prueba para validar la base de datos.",
+        checksum="sha256_mock_789xyz",
+        size_bytes=1024
+    )
 
-    # 2. Act (Actuar) 
-    # Insertamos el documento en MongoDB
-    result = await collection.insert_one(documento_ejemplo)
-    # Buscamos el documento recién creado usando su ID único
-    found_doc = await collection.find_one({"_id": result.inserted_id})
+    # 2. Act (Actuar)
+    # Guardamos usando el método del repositorio
+    inserted_id = await repository.save_document(documento_ejemplo)
+    
+    # Buscamos usando el método del repositorio
+    found_doc = await repository.find_by_checksum("sha256_mock_789xyz")
 
-    # 3. Assert (Verificar) 
-    # Nos aseguramos de que el documento existe y los datos coinciden
+    # 3. Assert (Verificar)
     assert found_doc is not None
     assert found_doc["filename"] == "documento_universidad.pdf"
     assert found_doc["checksum"] == "sha256_mock_789xyz"
     
     # 4. Teardown (Limpieza)
-    # Borramos el rastro del test para que la base de datos local no se ensucie
-    await collection.delete_one({"_id": result.inserted_id})
+    # Limpiamos usando la colección interna del repositorio para no dejar rastro
+    await repository.collection.delete_one({"checksum": "sha256_mock_789xyz"})
     await db_connection.close()
