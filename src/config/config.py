@@ -2,9 +2,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     mongo_url: str = "mongodb://localhost:27017"
-    database_name: str = "pdf_database"
+    # 🗄️ Registramos las dos bases de datos (Desarrollo y Pruebas)
+    mongo_db_dev: str = "pdf_database_dev"
+    mongo_db_test: str = "pdf_database_test"
 
-    # 'ignore' permite que existan variables en el .env que no usamos en la clase
     model_config = SettingsConfigDict(
         env_file=".env", 
         env_file_encoding='utf-8',
