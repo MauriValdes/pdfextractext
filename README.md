@@ -214,7 +214,7 @@ El desarrollo del proyecto se organiza mediante **GitHub Projects**, utilizando 
 
 ## Estado del proyecto
 
-🚧 **Etapa 1 - En desarrollo**
+**Etapa 1 - En desarrollo**
 
 Actualmente el proyecto implementa las funcionalidades requeridas para la primera etapa del trabajo práctico.
 
