@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, status
 from src.database.mongodb import db_connection
 from src.services.pdf_service import extract_text_from_pdf, get_pdf_checksum
 from src.models.document import DocumentCreate
+from src.config.config import settings
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -15,10 +16,11 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
 
     pdf_bytes = await file.read()
-    if len(pdf_bytes) > 5 * 1024 * 1024:
+    max_size_bytes = settings.max_file_size_mb * 1024 * 1024
+    if len(pdf_bytes) > max_size_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="El archivo es demasiado grande (máximo 5MB)"
+            detail=f"El archivo es demasiado grande (máximo {settings.max_file_size_mb}MB)"
         )
 
     checksum = get_pdf_checksum(pdf_bytes)
