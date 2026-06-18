@@ -3,6 +3,7 @@ from src.database.mongodb import db_connection
 from src.services.pdf_service import extract_text_from_pdf, get_pdf_checksum
 from src.models.document import DocumentCreate
 from src.config.config import settings
+import fitz
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -16,6 +17,13 @@ async def upload_pdf(file: UploadFile = File(...)):
         )
 
     pdf_bytes = await file.read()
+    # Validar que el archivo no esté vacío
+    if len(pdf_bytes) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo está vacío"
+        )
+
     max_size_bytes = settings.max_file_size_mb * 1024 * 1024
     if len(pdf_bytes) > max_size_bytes:
         raise HTTPException(
@@ -35,10 +43,24 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     try:
         text_content = extract_text_from_pdf(pdf_bytes)
+
+    except fitz.FileDataError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo PDF es inválido o está dañado"
+        )
+
     except Exception:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
-            detail="Error al extraer texto del PDF"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ocurrió un error interno al procesar el PDF"
+        )
+
+    # Validar que el PDF contenga texto
+    if not text_content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El PDF no contiene texto para procesar"
         )
 
     new_doc = DocumentCreate(
