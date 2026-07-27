@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     mongo_db_dev: str = "pdf_database_dev"
     mongo_db_test: str = "pdf_database_test"
     max_file_size_mb: int = 5
-
+    mongo_collection: str = "processed_pdfs"
+    
     model_config = SettingsConfigDict(
         env_file=".env", 
         env_file_encoding='utf-8',
