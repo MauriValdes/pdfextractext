@@ -1,87 +1,100 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
-import fitz
-from src.config.config import settings
-from src.services.pdf_service import extract_text_from_pdf, get_pdf_checksum
-from src.repository.document_repository import DocumentRepository
-from src.services.document_service import DocumentService
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
+from typing import List
+
 from src.database.mongodb import db_connection
-from src.models.document import DocumentCreate
+from src.repository.document_repository import DocumentRepository
+from src.services import pdf_service 
+from src.services.document_service import DocumentService
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
-@router.post("/upload", status_code=status.HTTP_201_CREATED)
-async def upload_pdf(file: UploadFile = File(...)):
 
-    # Validar que el archivo sea un PDF
+# 🛠️ Función auxiliar para convertir el _id (ObjectId) a string
+def format_doc(doc: dict) -> dict:
+    if doc and "_id" in doc:
+        doc["_id"] = str(doc["_id"])
+    return doc
+
+
+# 💉 Inyección de Dependencias
+def get_document_service() -> DocumentService:
+    repository = DocumentRepository(db_connection.db)
+    return DocumentService(repository=repository, pdf_service=pdf_service)
+
+
+# 1. CREATE: Subir y procesar un nuevo PDF 📄
+@router.post("/upload", status_code=status.HTTP_201_CREATED)
+async def upload_pdf(
+    file: UploadFile = File(...),
+    service: DocumentService = Depends(get_document_service)
+):
     if file.content_type != "application/pdf":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El archivo debe ser un PDF"
         )
 
-    pdf_bytes = await file.read()
-
-    # Validar que el archivo no esté vacío
-    if len(pdf_bytes) == 0:
+    file_bytes = await file.read()
+    if not file_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El archivo está vacío"
         )
 
-    # Validar tamaño máximo permitido
-    max_size_bytes = settings.max_file_size_mb * 1024 * 1024
-    if len(pdf_bytes) > max_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"El archivo es demasiado grande (máximo {settings.max_file_size_mb}MB)"
-        )
-
-    # Obtener checksum
-    checksum = get_pdf_checksum(pdf_bytes)
-
-    # Extraer texto y validar PDF
     try:
-        text_content = extract_text_from_pdf(pdf_bytes)
-
-    except fitz.FileDataError:
+        doc = await service.process_pdf(file_bytes=file_bytes, filename=file.filename)
+        return {
+            "message": "Archivo recibido y procesado exitosamente",
+            "document": format_doc(doc)  # 👈 Formateamos el id aquí
+        }
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El archivo PDF es inválido o está dañado"
+            detail=str(e)
         )
-
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ocurrió un error interno al procesar el PDF"
         )
 
-    # Validar que el PDF contenga texto
-    if not text_content.strip():
+
+# 2. READ: Obtener todos los documentos 📚
+@router.get("", status_code=status.HTTP_200_OK)
+async def get_all_documents(
+    service: DocumentService = Depends(get_document_service)
+):
+    documents = await service.get_all_documents()
+    # 👈 Formateamos cada documento de la lista
+    return [format_doc(doc) for doc in documents]
+
+
+# 3. READ: Obtener un documento por ID 🔍
+@router.get("/{document_id}", status_code=status.HTTP_200_OK)
+async def get_document_by_id(
+    document_id: str,
+    service: DocumentService = Depends(get_document_service)
+):
+    doc = await service.get_document_by_id(document_id)
+    if not doc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El PDF no contiene texto para procesar"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Documento no encontrado"
         )
+    return format_doc(doc)  # 👈 Formateamos el id aquí
 
-    repository = DocumentRepository(db_connection.db)
-    service = DocumentService(repository)
 
-    new_doc = DocumentCreate(
-        filename=file.filename,
-        content=text_content,
-        checksum=checksum,
-        size_bytes=len(pdf_bytes)
-    )
-
+# 4. DELETE: Borrar un documento por ID 🗑️
+@router.delete("/{document_id}", status_code=status.HTTP_200_OK)
+async def delete_document_by_id(
+    document_id: str,
+    service: DocumentService = Depends(get_document_service)
+):
     try:
-        await service.process_new_document(new_doc)
-
+        await service.delete_document(document_id)
+        return {"message": "Documento eliminado exitosamente"}
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e)
         )
-
-    return {
-        "message": "Archivo recibido y procesado exitosamente",
-        "filename": file.filename
-    }
