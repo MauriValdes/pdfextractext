@@ -4,6 +4,7 @@ import hashlib
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     # Extrae el contenido de texto de un archivo PDF procesado en memoria.
+    # Usamos stream=BytesIO para evitar que fitz busque el archivo en disco.
     with fitz.open(stream=io.BytesIO(pdf_bytes), filetype="pdf") as doc:
         text = ""
         for page in doc:
