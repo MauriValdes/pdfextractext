@@ -1,0 +1,13 @@
+# =============================================================================
+# Override para modo SINGLE-INSTANCE (benchmark comparativo 1 vs 5 réplicas)
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.single.yml up -d
+# =============================================================================
+services:
+  document-service:
+    container_name: pdf_document_service
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    deploy:
+      replicas: 1
