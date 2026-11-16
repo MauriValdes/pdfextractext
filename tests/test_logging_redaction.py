@@ -5,7 +5,7 @@ src.core.logging_config, según la especificación del Factor 11
 (12-Factor App logging).
 """
 
-from src.core.logging_config import is_sensitive_key, redact_value
+from src.core.logging_config import is_sensitive_key, redact_value, redact_uri
 
 
 class TestIsSensitiveKey:
@@ -207,6 +207,90 @@ class TestRedactValue:
         assert redact_value("test", False) is False
         assert redact_value("test", 42) == 42
         assert redact_value("test", 3.14) == 3.14
+
+
+class TestRedactUri:
+    """Tests para la función redact_uri() del módulo src.core.logging_config.
+
+    Esta función oculta credenciales (usuario:contraseña) en URIs con esquema
+    ://, conservando el esquema y el host para diagnóstico.
+
+    Brechas conocidas (documentadas en informe):
+    - No oculta parámetros query sensibles como token, api_key, password
+    - No maneja URI sin esquema ://
+    """
+
+    def test_mongodb_uri_with_credentials(self):
+        """Test: URI MongoDB con usuario y contraseña debe redactarse."""
+        result = redact_uri("mongodb://usuario:clave@db:27017/?authSource=admin")
+        expected = "mongodb://***:***@db:27017/?authSource=admin"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_http_uri_with_credentials(self):
+        """Test: URI HTTP con credenciales debe redactarse."""
+        result = redact_uri("https://user:pass@example.com/path")
+        expected = "https://***:***@example.com/path"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_https_uri_with_credentials(self):
+        """Test: URI HTTPS con credenciales debe redactarse."""
+        result = redact_uri("http://admin:secret@secure.example.com/api")
+        expected = "http://***:***@secure.example.com/api"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_uri_without_credentials(self):
+        """Test: URI sin credenciales debe conservarse sin modificaciones."""
+        result = redact_uri("mongodb://host:27017/db")
+        expected = "mongodb://host:27017/db"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_uri_empty_string(self):
+        """Test: URI vacía debe devolver cadena vacía."""
+        result = redact_uri("")
+        expected = ""
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_uri_none(self):
+        """Test: Valor None debe devolver cadena vacía."""
+        result = redact_uri(None)
+        expected = ""
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_credentials_url_encoded(self):
+        """Test: Credenciales URL-encoded deben redactarse."""
+        result = redact_uri("https://user%40pass@example.com")
+        expected = "https://***:***@example.com"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_custom_scheme(self):
+        """Test: Esquemas personalizados deben redactarse."""
+        result = redact_uri("custom://credencial@host")
+        expected = "custom://***:***@host"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_uri_with_port_and_path(self):
+        """Test: URI con puerto y ruta completos."""
+        result = redact_uri("mysql://root:password@localhost:3306/app_db")
+        expected = "mysql://***:***@localhost:3306/app_db"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_string_not_uri(self):
+        """Test: Strings que no tienen formato de URI deben conservarse."""
+        result = redact_uri("solo_texto_sin_formato_de_uri")
+        expected = "solo_texto_sin_formato_de_uri"
+        assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_string_password_not_redacted_by_redact_uri(self):
+        """Test: ADVERTENCIA - strings puros como 'mipassword' no son URI
+        y no son redactados por redact_uri() (no tienen ://).
+
+        Esta prueba DOCUMENTA la brecha, no la corrige.
+        """
+        # strings puros sin :// no son reconocidos como URI por redact_uri()
+        result = redact_uri("mipassword123")
+        # Como no tiene esquema ://, el regex no coincide y retorna sin cambios
+        assert result == "mipassword123", f"Expected 'mipassword123' (no URI format), got '{result}'"
+        # Esto documenta que redact_uri() no protege contraseñas en formato texto puro
 
 
 if __name__ == "__main__":
