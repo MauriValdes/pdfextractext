@@ -9,17 +9,15 @@
 // Rotación de archivos: round-robin por iteración entre los fixtures PDF.
 //
 // BASE_URL parametrizable (12-Factor: la config vive en el entorno):
-//   - Cluster (5 réplicas detrás de Traefik, default):
+//   - Instancia directa publicada por docker-compose.single.yml (default):
 //       k6 run tests/stress/k6_spike.js
 //   - Single instance (docker-compose.single.yml):
-//       k6 run -e BASE_URL=http://localhost:8000 tests/stress/k6_spike.js
-//   - Con envío binario directo (Content-Type: application/pdf):
-//       k6 run -e BASE_URL=http://extract.universidad.localhost tests/stress/k6_spike.js
+//       k6 run -e BASE_URL=http://localhost:8088 tests/stress/k6_spike.js
 // =============================================================================
 import http from 'k6/http';
 import { check } from 'k6';
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:80';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8000';
 
 // Los archivos se abren en el "init context": k6 los carga UNA sola vez
 // por VU y los reutiliza en todas las iteraciones (eficiente en memoria).
