@@ -21,6 +21,6 @@ COPY . .
 EXPOSE 8000
 
 # 8. Comando para iniciar la aplicación usando uvicorn
-# Se usa un worker por réplica; el escalado horizontal se hace mediante
-# deploy.replicas: 5 en docker-compose.yml (máximo 5 × 1 CPU = 5 workers totales)
+# Se usa un worker por réplica; las réplicas se escalan manualmente con
+# `docker compose up --scale document-service=N`.
 CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
