@@ -107,7 +107,8 @@ async def extract_text(
             f"El archivo supera el tamaño máximo de {settings.max_file_size_mb} MB"
         )
 
-    # 3. Extracción: PyMuPDF es CPU-bound, así que lo delegamos al
-    # threadpool de Starlette para no bloquear el event loop de uvicorn
-    # bajo carga (crítico para el benchmark de estrés).
-    return await run_in_threadpool(service.extract, pdf_bytes, filename)
+    # 3. PyMuPDF no debe ejecutarse simultáneamente dentro del proceso.
+    # El lock vive en app.state y se comparte entre solicitudes del proceso.
+    # run_in_threadpool mantiene el event loop disponible durante la extracción.
+    async with request.app.state.extraction_lock:
+        return await run_in_threadpool(service.extract, pdf_bytes, filename)

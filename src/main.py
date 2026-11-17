@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 
 from src.config.config import settings
 from src.core.logging_config import configure_logging
@@ -18,7 +19,11 @@ from src.core.exceptions import register_exception_handlers  # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    app.state.extraction_lock = asyncio.Lock()
+    try:
+        yield
+    finally:
+        app.state.extraction_lock = None
 
 app = FastAPI(
     title="PDF Extract Text API",

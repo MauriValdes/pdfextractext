@@ -11,7 +11,11 @@ from src.core.exceptions import ExtractionError
 from src.main import app
 from src.schemas.extraction import ExtractionResponse
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    """Ejecuta cada prueba con el lifespan de la aplicación activo."""
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 @pytest.fixture
@@ -34,7 +38,7 @@ def make_pdf_bytes(pages: int = 1, text: str = "Hola mundo") -> bytes:
     return data
 
 
-def test_extract_ok_exact_contract(mock_service):
+def test_extract_ok_exact_contract(mock_service, client):
     """El contrato exige 200 con exactamente {content, page_count}."""
     mock_service.extract.return_value = ExtractionResponse(
         content="texto extraido", page_count=3
@@ -51,7 +55,7 @@ def test_extract_ok_exact_contract(mock_service):
     mock_service.extract.assert_called_once()
 
 
-def test_extract_rejects_non_pdf_mime(mock_service):
+def test_extract_rejects_non_pdf_mime(mock_service, client):
     files = {"file": ("doc.pdf", b"contenido", "text/plain")}
     response = client.post("/extract", files=files)
 
@@ -59,7 +63,7 @@ def test_extract_rejects_non_pdf_mime(mock_service):
     mock_service.extract.assert_not_called()
 
 
-def test_extract_rejects_non_pdf_extension(mock_service):
+def test_extract_rejects_non_pdf_extension(mock_service, client):
     files = {"file": ("notas.txt", b"contenido", "application/pdf")}
     response = client.post("/extract", files=files)
 
@@ -67,7 +71,7 @@ def test_extract_rejects_non_pdf_extension(mock_service):
     mock_service.extract.assert_not_called()
 
 
-def test_extract_rejects_empty_file(mock_service):
+def test_extract_rejects_empty_file(mock_service, client):
     files = {"file": ("vacio.pdf", b"", "application/pdf")}
     response = client.post("/extract", files=files)
 
@@ -75,7 +79,7 @@ def test_extract_rejects_empty_file(mock_service):
     mock_service.extract.assert_not_called()
 
 
-def test_extract_rejects_oversized_file(mock_service):
+def test_extract_rejects_oversized_file(mock_service, client):
     max_bytes = settings.max_file_size_mb * 1024 * 1024
     big_pdf = b"%PDF-1.4 " + b"a" * max_bytes  # supera el límite
     files = {"file": ("grande.pdf", big_pdf, "application/pdf")}
@@ -85,7 +89,7 @@ def test_extract_rejects_oversized_file(mock_service):
     mock_service.extract.assert_not_called()
 
 
-def test_extract_corrupt_pdf_returns_422(mock_service):
+def test_extract_corrupt_pdf_returns_422(mock_service, client):
     mock_service.extract.side_effect = ExtractionError()
 
     files = {"file": ("corrupto.pdf", b"%PDF-1.4 basura", "application/pdf")}
@@ -95,7 +99,7 @@ def test_extract_corrupt_pdf_returns_422(mock_service):
     assert "detail" in response.json()
 
 
-def test_extract_end_to_end_with_real_pdf():
+def test_extract_end_to_end_with_real_pdf(client):
     """Integración: servicio real con un PDF generado en memoria."""
     pdf_bytes = make_pdf_bytes(pages=2, text="Contrato de benchmark")
     files = {"file": ("real.pdf", pdf_bytes, "application/pdf")}
@@ -107,7 +111,7 @@ def test_extract_end_to_end_with_real_pdf():
     assert "Contrato de benchmark" in body["content"]
 
 
-def test_extract_raw_bytes_via_content_type():
+def test_extract_raw_bytes_via_content_type(client):
     """Testear la vía de bytes directos con Content-Type: application/pdf
     (sin multipart/form-data). Esto cubre la rama 'else' en _extract_pdf_bytes_from_request."""
     mock_service = MagicMock()
@@ -132,7 +136,7 @@ def test_extract_raw_bytes_via_content_type():
     app.dependency_overrides.pop(get_extraction_service, None)
 
 
-def test_extract_raw_bytes_rejects_wrong_mime():
+def test_extract_raw_bytes_rejects_wrong_mime(client):
     """Testear que bytes raw con Content-Type incorrecto falla."""
     mock_service = MagicMock()
     app.dependency_overrides[get_extraction_service] = lambda: mock_service
