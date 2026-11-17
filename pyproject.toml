@@ -7,11 +7,9 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
-    "motor>=3.6.0",
     "pydantic-settings>=2.5.0",
     "python-multipart>=0.0.26",
     "pymupdf>=1.27.2.2",
-    "redis>=8.1.0",
 ]
 
 [dependency-groups]

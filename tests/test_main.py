@@ -2,7 +2,6 @@
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.config.config import settings
 
 client = TestClient(app)
 
@@ -31,9 +30,3 @@ def test_lifespan_runs():
     assert app is not None
     # Verificar que la app tiene los routers incluídos
     assert app.routes is not None
-
-
-def test_config_redis_url():
-    """Verificar que la propiedad redis_url de la configuración funciona."""
-    url = settings.redis_url
-    assert url == "redis://localhost:6379/0"
