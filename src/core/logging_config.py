@@ -46,7 +46,6 @@ from typing import Any, Mapping
 # ---------------------------------------------------------------------------
 
 ENV_LOG_LEVEL = "LOG_LEVEL"
-ENV_SERVICE_NAME = "SERVICE_NAME"
 
 DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_SERVICE_NAME = "ms2-extraction"
@@ -428,12 +427,8 @@ class JsonFormatter(logging.Formatter):
 
     @property
     def service_name(self) -> str:
-        """Nombre del servicio: explícito > variable de entorno > por defecto."""
-        return (
-            self._service_name
-            or os.getenv(ENV_SERVICE_NAME)
-            or DEFAULT_SERVICE_NAME
-        )
+        """Nombre explícito del servicio o el identificador fijo por defecto."""
+        return self._service_name
 
     def format(self, record: logging.LogRecord) -> str:
         # El mensaje se construye con los argumentos ya redactados, de modo

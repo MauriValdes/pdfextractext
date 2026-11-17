@@ -11,6 +11,22 @@ import sys
 from src.core.logging_config import JsonFormatter, _format_exception
 
 
+def test_service_name_no_depende_de_una_variable_de_entorno(monkeypatch):
+    monkeypatch.setenv("SERVICE_NAME", "nombre-externo")
+    formatter = JsonFormatter()
+    record = logging.LogRecord(
+        name="test_service_name",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="test",
+        args=(),
+        exc_info=None,
+    )
+
+    assert json.loads(formatter.format(record))["service"] == "ms2-extraction"
+
+
 class TestFormatException:
     """Pruebas para _format_exception()."""
 
@@ -293,7 +309,7 @@ class TestRedactionInExceptions:
     def test_redaccion_uri_dentro_excepcion(self):
         """Test: Las credenciales en URI dentro de excepciones deben redactarse."""
         try:
-            raise ValueError("mongodb://usuario:clave@db:27017/db")
+            raise ValueError("service://usuario:clave@db:27017/db")
         except Exception:
             import logging
 
@@ -318,7 +334,7 @@ class TestRedactionInExceptions:
             parsed = json.loads(formatted)
             exception_str = parsed["exception"]
             # Las credenciales deben estar redactadas como ***
-            assert "***:***@" in exception_str or "mongodb://***:**@" in exception_str, (
+            assert "***:***@" in exception_str or "service://***:**@" in exception_str, (
                 f"Expected redacted credentials in exception, got: {exception_str}"
             )
 
@@ -371,7 +387,7 @@ class TestRedactionInExceptions:
             lineno=1,
             msg="test message",
             args=(),
-            sinfo="Error en mongodb://usuario:clave@db:27017/db",
+            sinfo="Error en service://usuario:clave@db:27017/db",
             exc_info=None,
         )
 
@@ -379,7 +395,7 @@ class TestRedactionInExceptions:
         parsed = json.loads(formatted)
         stack_str = parsed["stack"]
         # Las credenciales deben estar redactadas
-        assert "***:***@" in stack_str or "mongodb://***:**@" in stack_str, (
+        assert "***:***@" in stack_str or "service://***:**@" in stack_str, (
             f"Expected redacted credentials in stack, got: {stack_str}"
         )
 

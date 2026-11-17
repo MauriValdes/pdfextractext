@@ -5,7 +5,14 @@ del módulo src.core.logging_config, según la especificación del
 Factor 11 (12-Factor App logging).
 """
 
-from src.core.logging_config import is_sensitive_key, redact_value, redact_uri
+import logging
+
+from src.core.logging_config import (
+    RedactionFilter,
+    is_sensitive_key,
+    redact_value,
+    redact_uri,
+)
 
 
 class TestIsSensitiveKey:
@@ -165,7 +172,7 @@ class TestRedactValue:
     def test_redact_mixed_keys(self):
         """Test 33: Diccionario mixto de claves sensibles y no sensibles."""
         mapping = {
-            "url": "mongodb://host:27017",
+            "url": "service://host:27017",
             "password": "secret123",
             "endpoint": "/health",
             "api_key": "sk-test",
@@ -175,7 +182,7 @@ class TestRedactValue:
         assert result["password"] == "***", f"Expected password to be redacted, got {result['password']}"
         assert result["api_key"] == "***", f"Expected api_key to be redacted, got {result['api_key']}"
         # url y endpoint deben conservarse
-        assert result["url"] == "mongodb://host:27017", f"Expected url unchanged, got {result['url']}"
+        assert result["url"] == "service://host:27017", f"Expected url unchanged, got {result['url']}"
         assert result["endpoint"] == "/health", f"Expected endpoint unchanged, got {result['endpoint']}"
 
     def test_redact_value_sensitive_key_immediate_redact(self):
@@ -222,11 +229,25 @@ class TestRedactUri:
     - No redacta contraseñas en texto plano que no forman parte de una URI.
     """
 
-    def test_mongodb_uri_with_credentials(self):
-        """Test: Una URI MongoDB con usuario y contraseña debe redactarse."""
-        result = redact_uri("mongodb://usuario:clave@db:27017/?authSource=admin")
-        expected = "mongodb://***:***@db:27017/?authSource=admin"
+    def test_uri_with_credentials(self):
+        """Una URI con usuario y contraseña debe redactarse."""
+        result = redact_uri("service://usuario:clave@db:27017/?authSource=admin")
+        expected = "service://***:***@db:27017/?authSource=admin"
         assert result == expected, f"Expected '{expected}', got '{result}'"
+
+    def test_mongodb_uri_with_credentials(self):
+        """URI MongoDB conserva host y base, pero oculta userinfo."""
+        result = redact_uri("mongodb://usuario:secreto@localhost:27017/db")
+        assert result == "mongodb://***:***@localhost:27017/db"
+        assert "usuario" not in result
+        assert "secreto" not in result
+
+    def test_mongodb_srv_uri_with_credentials(self):
+        """URI MongoDB SRV conserva cluster y base, pero oculta userinfo."""
+        result = redact_uri("mongodb+srv://usuario:secreto@cluster/db")
+        assert result == "mongodb+srv://***:***@cluster/db"
+        assert "usuario" not in result
+        assert "secreto" not in result
 
     def test_http_uri_with_credentials(self):
         """Test: Una URI HTTP con credenciales debe redactarse."""
@@ -242,8 +263,8 @@ class TestRedactUri:
 
     def test_uri_without_credentials(self):
         """Test: Una URI sin credenciales debe conservarse sin modificaciones."""
-        result = redact_uri("mongodb://host:27017/db")
-        expected = "mongodb://host:27017/db"
+        result = redact_uri("service://host:27017/db")
+        expected = "service://host:27017/db"
         assert result == expected, f"Expected '{expected}', got '{result}'"
 
     def test_uri_empty_string(self):
@@ -426,9 +447,9 @@ class TestRedactUriQueryStrings:
         (comportamiento actual de redact_uri()) y que token y secret
         también queden ocultos en la cadena de consulta.
         """
-        result = redact_uri("mongodb://user:pass@host:27017/db?token=abc123&secret=xyz")
+        result = redact_uri("service://user:pass@host:27017/db?token=abc123&secret=xyz")
         # Las credenciales embebidas deben continuar redactadas.
-        assert "mongodb://***:***@host:27017/db" in result, (
+        assert "service://***:***@host:27017/db" in result, (
             f"Credentials should be redacted, got '{result}'"
         )
         # Los parámetros de la cadena de consulta también deben redactarse.
@@ -437,9 +458,9 @@ class TestRedactUriQueryStrings:
 
     def test_uri_without_query_string(self):
         """Test: Una URI sin cadena de consulta debe conservar el comportamiento esperado."""
-        result = redact_uri("mongodb://user:pass@host:27017/db")
+        result = redact_uri("service://user:pass@host:27017/db")
         # La implementación actual oculta las credenciales.
-        expected_redacted_creds = "mongodb://***:***@host:27017/db"
+        expected_redacted_creds = "service://***:***@host:27017/db"
         assert result == expected_redacted_creds, (
             f"Expected creds redacted, got '{result}'"
         )
@@ -458,6 +479,50 @@ class TestRedactUriQueryStrings:
         assert "a=1" in result, f"Public param 'a=1' should be conserved, got '{result}'"
         assert "b=2" in result, f"Public param 'b=2' should be conserved, got '{result}'"
         assert "c=3" in result, f"Public param 'c=3' should be conserved, got '{result}'"
+
+
+class TestRedactionFilterMongoCredentials:
+    """El filtro oculta los campos de conexión MongoDB en el LogRecord."""
+
+    @staticmethod
+    def make_record(field_name: str, uri: str) -> logging.LogRecord:
+        record = logging.LogRecord(
+            name="test_mongo_redaction",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=1,
+            msg="Conexión a MongoDB configurada",
+            args=(),
+            exc_info=None,
+        )
+        setattr(record, field_name, uri)
+        return record
+
+    def test_redacts_mongo_url_extra(self):
+        record = self.make_record(
+            "mongo_url",
+            "mongodb://usuario:secreto@localhost:27017/db",
+        )
+
+        assert RedactionFilter().filter(record) is True
+        assert record.mongo_url == "***"
+        assert "usuario" not in record.getMessage()
+        assert "secreto" not in record.getMessage()
+        assert "usuario" not in record.mongo_url
+        assert "secreto" not in record.mongo_url
+
+    def test_redacts_mongo_uri_extra(self):
+        record = self.make_record(
+            "mongo_uri",
+            "mongodb+srv://usuario:secreto@cluster/db",
+        )
+
+        assert RedactionFilter().filter(record) is True
+        assert record.mongo_uri == "***"
+        assert "usuario" not in record.getMessage()
+        assert "secreto" not in record.getMessage()
+        assert "usuario" not in record.mongo_uri
+        assert "secreto" not in record.mongo_uri
 
 
 if __name__ == "__main__":
