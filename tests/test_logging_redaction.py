@@ -481,6 +481,73 @@ class TestRedactUriQueryStrings:
         assert "c=3" in result, f"Public param 'c=3' should be conserved, got '{result}'"
 
 
+class TestRedactUriFastPathEquivalencia:
+    """Equivalencia de redact_uri() tras la optimización de formateo.
+
+    La optimización (regex de credenciales precompilada + fast-path para
+    cadenas sin '@', '?' ni '#') NO debe alterar la salida. Los valores
+    esperados fueron capturados de la implementación previa a la
+    optimización (ANTES == DESPUÉS, caso por caso).
+    """
+
+    # (entrada, salida esperada) — golden de la implementación sin optimizar
+    GOLDEN = [
+        # 1. string normal sin @/?/# (camino del fast-path)
+        ("mensaje de acceso 172.20.0.1 - POST /extract",
+         "mensaje de acceso 172.20.0.1 - POST /extract"),
+        # 2. URI sin credenciales, query ni fragmento
+        ("https://host/extract", "https://host/extract"),
+        # 3. URI con credenciales
+        ("postgres://usuario:clave@db:5432/app",
+         "postgres://***:***@db:5432/app"),
+        # 4. URI con query pública
+        ("https://api.example.com/?a=1&b=2",
+         "https://api.example.com/?a=1&b=2"),
+        # 5. URI con password en query
+        ("https://example.com/?password=secret123",
+         "https://example.com/?password=***"),
+        # 6. URI con token en query
+        ("https://api.example.com/?token=abc123",
+         "https://api.example.com/?token=***"),
+        # 7. URI con authorization en query
+        ("https://api.example.com/?authorization=Bearer%20xyz",
+         "https://api.example.com/?authorization=***"),
+        # 8. URI con fragmento #
+        ("https://host/path#seccion", "https://host/path#seccion"),
+        # 9. claves sensibles repetidas
+        ("https://host/?token=a&token=b&token=c",
+         "https://host/?token=***&token=***&token=***"),
+        # 10. URI malformada (sin esquema, escapes inválidos)
+        ("://sin-esquema@raro?%%zz", "://sin-esquema@raro?%%zz"),
+        # combinada: credenciales + query codificada + fragmento
+        ("http://u:p@host/path?next=%2Fhome%3Fa%3D1#frag",
+         "http://***:***@host/path?next=%2Fhome%3Fa%3D1#frag"),
+    ]
+
+    def test_salida_identicas_a_la_implementacion_previa(self):
+        """Cada entrada produce exactamente la salida de la implementación
+        previa a la optimización (equivale a ANTES == DESPUÉS)."""
+        for entrada, esperado in self.GOLDEN:
+            resultado = redact_uri(entrada)
+            assert resultado == esperado, (
+                f"redact_uri({entrada!r}) = {resultado!r}, esperado {esperado!r}"
+            )
+
+    def test_fast_path_no_altera_cadenas_sin_marcadores(self):
+        """Cadenas sin @, ? ni # se devuelven sin cambios (incluye vacíos
+        intermedios y caracteres '%' sueltos)."""
+        for entrada in ["", "texto plano", "503 - 61.98ms", "a%b c", "%%zz"]:
+            assert redact_uri(entrada) == entrada, (
+                f"fast-path debería conservar {entrada!r}, obtuvo {redact_uri(entrada)!r}"
+            )
+
+    def test_fast_path_devuelve_el_mismo_objeto_de_entrada_consistente(self):
+        """str() sobre entrada no-str se comporta igual que antes: un valor
+        no textual se convierte a str y, si no tiene marcadores, se devuelve
+        tal cual convertido (mismo contrato que la implementación previa)."""
+        assert redact_uri(12345) == "12345"
+
+
 class TestRedactionFilterMongoCredentials:
     """El filtro oculta los campos de conexión MongoDB en el LogRecord."""
 

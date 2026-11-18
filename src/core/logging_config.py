@@ -40,6 +40,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from typing import Any, Mapping
+from urllib.parse import unquote_plus
 
 # ---------------------------------------------------------------------------
 # Constantes de entorno y valores por defecto
@@ -101,7 +102,6 @@ def is_sensitive_key(key: Any) -> bool:
 
 
 # Conjunto normalizado de claves sensibles para comparación rápida
-_KEY_NORMALIZE_RE = __import__("re").compile(r"[^a-z0-9]+")
 _SENSITIVE_KEYS_NORMALIZED = frozenset(
     _KEY_NORMALIZE_RE.sub("", str(key).lower()) for key in (
         "access_token",
@@ -127,14 +127,28 @@ _SENSITIVE_KEYS_NORMALIZED = frozenset(
 
 
 
+# Regex de credenciales embebidas, precompilada una sola vez a nivel de
+# módulo: redact_uri() se ejecuta por cada registro de log y recompilarla
+# en cada llamada era el costo dominante del formateo. La redacción solo
+# puede alterar una cadena que contenga credenciales embebidas ('@'), una
+# query ('?') o un fragmento ('#'); ese invariante habilita el fast-path.
+_CREDENTIALS_RE = re.compile(
+    r"(?P<scheme>[a-zA-Z][\w+.-]*://)(?P<credentials>[^/@\s]+)@"
+)
+
+
 def redact_uri(uri: str | None) -> str:
     """Oculta credenciales y parámetros sensibles de una URI."""
     if not uri:
         return ""
 
-    from urllib.parse import unquote_plus
-
     value = str(uri)
+
+    # Fast-path: sin '@' (credenciales), '?' (query) ni '#' (fragmento),
+    # el procesamiento completo devuelve exactamente el valor de entrada;
+    # se devuelve de inmediato sin particionar ni ejecutar la regex.
+    if "@" not in value and "?" not in value and "#" not in value:
+        return value
 
     # Separar el fragmento para no modificar su contenido.
     before_fragment, separator, fragment = value.partition("#")
@@ -143,10 +157,7 @@ def redact_uri(uri: str | None) -> str:
     base, query_separator, query = before_fragment.partition("?")
 
     # Ocultar credenciales embebidas (usuario y contraseña).
-    credentials_re = re.compile(
-        r"(?P<scheme>[a-zA-Z][\w+.-]*://)(?P<credentials>[^/@\s]+)@"
-    )
-    base = credentials_re.sub(r"\g<scheme>***:***@", base)
+    base = _CREDENTIALS_RE.sub(r"\g<scheme>***:***@", base)
 
     # Redactar parámetros sensibles conservando orden, nombres,
     # parámetros repetidos y valores públicos sin recodificarlos.
