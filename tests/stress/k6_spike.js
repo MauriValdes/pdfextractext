@@ -75,7 +75,7 @@ export const options = {
     // Señal explícita de respuestas inesperadas: es el criterio principal
     // de fallo. 200/413/503 se observan con sus métricas sin umbral: sus
     // proporciones no hacen fallar la prueba por sí solas.
-    unexpected_status_rate: ['rate<0.05'],
+    extract_unexpected_status_rate: ['rate<0.05'],
   },
 };
 
