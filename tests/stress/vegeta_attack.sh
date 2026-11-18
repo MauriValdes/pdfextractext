@@ -11,9 +11,21 @@ RATE="50/1s"
 DURATION="30s"
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 TARGETS="${SCRIPT_DIR}/targets.txt"
-BIN_OUTPUT="${SCRIPT_DIR}/results.bin"
-JSON_OUTPUT="${SCRIPT_DIR}/results.json"
-PLOT_OUTPUT="${SCRIPT_DIR}/results.html"
+RESULTS_ROOT="${SCRIPT_DIR}/results"
+RUN_ID="$(date '+%Y%m%d_%H%M%S')"
+RESULT_DIR="${RESULTS_ROOT}/${RUN_ID}"
+SUFFIX=1
+if ! mkdir -p "${RESULTS_ROOT}"; then
+  echo "Error: no se pudo crear el directorio de resultados: ${RESULTS_ROOT}" >&2
+  exit 1
+fi
+while ! mkdir "${RESULT_DIR}" 2>/dev/null; do
+  RESULT_DIR="${RESULTS_ROOT}/${RUN_ID}_${SUFFIX}"
+  SUFFIX=$((SUFFIX + 1))
+done
+BIN_OUTPUT="${RESULT_DIR}/results.bin"
+JSON_OUTPUT="${RESULT_DIR}/results.json"
+PLOT_OUTPUT="${RESULT_DIR}/results.html"
 RENDERED_TARGETS="$(mktemp)"
 trap 'rm -f "${RENDERED_TARGETS}"' EXIT
 

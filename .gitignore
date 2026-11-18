@@ -151,3 +151,5 @@ migrations/
 
 # Resultados de tests de estres (artefactos binarios de Vegeta)
 tests/stress/*.bin
+# Resultados generados por ejecución de Vegeta (subdirectorios por corrida)
+tests/stress/results/
